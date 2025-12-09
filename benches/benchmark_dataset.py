@@ -19,11 +19,41 @@ from nemulate.data.transforms import RandomRotatedRegrid
 from nemulate.data.transforms import SubstractForcedResponse
 from nemulate.data.transforms import UnwrapFields
 
-from nemulate.datasets import ClimateDataset
-from nemulate.data.sources import get_cesm2_members_ids
-
 from tqdm import tqdm
 
+
+class MarkerTransform(nn.Module):
+    def __init__(self, timer, name):
+        super().__init__()
+        self.timer = timer
+        self.name = name
+
+    def forward(self, ins):
+        self.timer.mark(self.name)
+        return ins
+
+
+class TransformTimer:
+    def __init__(self):
+        super().__init__()
+        self.last = 0
+        self.markers = {}
+
+    def mark(self, name):
+        now = perf_counter()
+        self.markers[name] = now - self.last + self.markers.get(name, 0)
+        self.last = now
+
+    def __enter__(self):
+        self.last = perf_counter()
+        self.markers = {}
+        return self.markers
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def checkpoint(self, name):
+        return MarkerTransform(self, name)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -33,72 +63,49 @@ from tqdm import tqdm
     required=True,
     help="Root folder containing CESM data",
 )
-@click.option(
-    "--batch-size",
-    "-b",
-    type=int,
-    default=4,
-    show_default=True,
-    help="Batch size for the DataLoader",
-)
-@click.option(
-    "--num-workers",
-    type=int,
-    default=8,
-    show_default=True,
-    help="Number of worker processes for the DataLoader",
-)
-@click.option(
-    "--prefetch-factor",
-    type=int,
-    default=4,
-    show_default=True,
-    help="Prefetch factor for the DataLoader",
-)
-@click.option(
-    "--persistent-workers/--no-persistent-workers",
-    default=True,
-    help="Use persistent workers for the DataLoader",
-)
-@click.option(
-    "--pin-memory/--no-pin-memory",
-    default=True,
-    help="Pin memory for the DataLoader",
-)
-def main(
-    cesm_path: Path,
-    batch_size: int = 4,
-    num_workers: int = 8,
-    prefetch_factor: int = 4,
-    persistent_workers: bool = True,
-    pin_memory: bool = True,
-):
+def main(cesm_path: Path):
     merged_path = cesm_path / "merged"
     var_names = list(sorted([p.stem for p in merged_path.glob("*")]))
     print(f"Found {len(var_names)} variables: {var_names}")
 
+    timer = TransformTimer()
+
     tfm = nn.Sequential(
+        timer.checkpoint("start"),
         Lambda(lambda ins: ins.compute()),
+        timer.checkpoint("compute"),
         SubstractForcedResponse(
             cesm_path.joinpath("moments"),
             "{var}_forced_response_1.nc",
             var_names=var_names,
         ),
+        timer.checkpoint("forced_response"),
         FieldScaler(
             cesm_path / "stats" / "all_var_time_stats.nc",
             field_format="{var}_var_globalstd",
             var_names=var_names,
         ),
+        timer.checkpoint("scaler"),
         AddLatLong(
             grid_path=cesm_path / "grid_info.nc",
         ),
+        timer.checkpoint("add_lat_long"),
         RandomRotatedRegrid(
             grid_path=cesm_path / "grid_info.nc",
-            p=0.0,
+            target_degree=1.0,
+            rotation_lows_deg=(-30, -60),
+            rotation_highs_deg=(30, 60),
+            rotation_axis="xy",
+            queue_length=10,
+            refresh_period=5,
         ),
+        timer.checkpoint("random_rotate"),
         AddNanMask(var_names),
+        timer.checkpoint("add_nan"),
         AddXYZ(),
+        timer.checkpoint("add_xyz"),
         AddYearMonth(),
+        timer.checkpoint("add_time"),
         UnwrapFields(
             {
                 "vars": var_names,
@@ -108,11 +115,15 @@ def main(
                 "xyz": ["cart_x", "cart_y", "cart_z"],
             }
         ),
+        timer.checkpoint("unwrap"),
     )
+
+    from nemulate.datasets import ClimateDataset
+    from nemulate.data.sources import get_cesm2_members_ids
 
     members = get_cesm2_members_ids(merged_path, var_name=var_names)
 
-    climate_ds = ClimateDataset(
+    ds = ClimateDataset(
         merged_path,
         members=members,
         variables=var_names,
@@ -121,21 +132,19 @@ def main(
         transform=tfm,
     )
 
-    climate_dl = DataLoader(
-        climate_ds,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        prefetch_factor=prefetch_factor,
-        persistent_workers=persistent_workers,
-        pin_memory=pin_memory,
-    )
+    num_iters = 256
+    print("Dataset has:", len(ds), "elements")
+    samples_indices = np.random.choice(len(ds), num_iters, replace=False)
+    with timer as results:
+        for i in tqdm(range(num_iters)):
+            _ = ds[samples_indices[i]]
 
-    pbar = tqdm(climate_dl, desc=f"Browsing dataloader")
-    for batch in pbar:
-        fields = batch["vars"]
-        # fields = fields.transpose(1, 2).contiguous()
-        # fields = fields.view(-1, *fields.shape[2:])
+    for name, t in results.items():
+        print(name, "took on average", t / num_iters)
+
+    # dl = DataLoader(
+    #     ds, batch_size=2, shuffle=True, num_workers=2, prefetch_factor=4
+    # )
 
 
 if __name__ == "__main__":
