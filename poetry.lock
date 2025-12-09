@@ -4948,7 +4948,7 @@ tox = ["sparse[tests]", "tox"]
 
 [[package]]
 name = "sphedron"
-version = "0.1.0"
+version = "0.1.1"
 description = "Polyhedral meshes on the unit sphere"
 optional = false
 python-versions = ">=3.10"
@@ -4965,8 +4965,10 @@ trimesh = "^4.5.3"
 plot = ["cartopy (>=0.23.0,<0.24.0)", "shapely (>=2.0.5,<3.0.0)"]
 
 [package.source]
-type = "directory"
-url = "../../packages/sphedron"
+type = "git"
+url = "https://github.com/ayghri/sphedron.git"
+reference = "HEAD"
+resolved_reference = "5455568a1eef3107df8ae961825b5acaf3b3391e"
 
 [[package]]
 name = "stack-data"
@@ -5293,14 +5295,14 @@ test = ["argcomplete (>=3.0.3)", "mypy (>=1.7.0)", "pre-commit", "pytest (>=7.0,
 
 [[package]]
 name = "trimesh"
-version = "4.9.0"
+version = "4.10.1"
 description = "Import, export, process, analyze and view triangular meshes."
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "trimesh-4.9.0-py3-none-any.whl", hash = "sha256:934265a1de4b472bee21094c4e88d0a7522054b9911adb06e9b8062bb8757178"},
-    {file = "trimesh-4.9.0.tar.gz", hash = "sha256:ad907a223867f614ef1598d85a4c978845f39365cb7ccc93fa5800901fba3ef9"},
+    {file = "trimesh-4.10.1-py3-none-any.whl", hash = "sha256:4e81fae696683dfe912ef54ce124869487d35d267b87e10fe07fc05ab62aaadb"},
+    {file = "trimesh-4.10.1.tar.gz", hash = "sha256:2067ebb8dcde0d7f00c2a85bfcae4aa891c40898e5f14232592429025ee2c593"},
 ]
 
 [package.dependencies]
@@ -5309,10 +5311,10 @@ numpy = ">=1.20"
 [package.extras]
 all = ["trimesh[deprecated,easy,recommend,test,test-more]"]
 deprecated = ["openctm"]
-easy = ["charset-normalizer", "colorlog", "embreex ; platform_machine == \"x86_64\"", "httpx", "jsonschema", "lxml", "manifold3d (>=2.3.0)", "mapbox_earcut (>=1.0.2) ; python_version >= \"3.9\"", "networkx", "pillow", "pycollada (<=0.9.0) ; python_version < \"3.9\"", "pycollada ; python_version >= \"3.9\"", "rtree", "scipy", "shapely", "svg.path", "vhacdx ; python_version >= \"3.9\"", "xxhash"]
-recommend = ["cascadio", "fast-simplification", "meshio", "psutil", "pyglet (<2)", "python-fcl", "scikit-image", "sympy"]
+easy = ["charset-normalizer", "colorlog", "embreex ; platform_machine == \"x86_64\"", "httpx", "jsonschema", "lxml", "manifold3d (>=2.3.0) ; python_version < \"3.14\"", "mapbox_earcut (>=1.0.2) ; python_version >= \"3.9\"", "networkx", "pillow", "pycollada (<=0.9.0) ; python_version < \"3.9\"", "pycollada ; python_version >= \"3.9\"", "rtree", "scipy", "shapely", "svg.path", "vhacdx ; python_version >= \"3.9\"", "xxhash"]
+recommend = ["cascadio", "fast-simplification", "manifold3d (>=2.3.0) ; python_version >= \"3.14\"", "pyglet (<2)", "python-fcl", "scikit-image", "sympy"]
 test = ["pyinstrument", "pytest", "pytest-cov", "ruff"]
-test-more = ["coveralls", "ezdxf", "ipython", "marimo", "matplotlib", "pymeshlab", "pytest-beartype ; python_version >= \"3.10\"", "triangle", "xatlas"]
+test-more = ["coveralls", "ezdxf", "ipython", "marimo", "matplotlib", "meshio", "pymeshlab ; python_version < \"3.14\"", "pytest-beartype ; python_version >= \"3.10\"", "triangle ; python_version < \"3.14\"", "xatlas"]
 
 [[package]]
 name = "triton"
@@ -5739,4 +5741,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "06954ed1657808779423305d90fb9b831d62a051f3a5ecde4a628bec7906112d"
+content-hash = "0666b381628acca87807fa3c3d946c13c8d4794f7b7ab0f81336e82583c33e9a"

@@ -24,8 +24,8 @@ dependencies = [
     "torchinfo (>=1.8.0,<2.0.0)",
     "dask[distributed] (>=2025.10.0,<2026.0.0)",
     "click (>=8.1.7,<9.0.0)",
-    "sphedron @ file:///media/sync/syncthing/repos/packages/sphedron",
     "wandb (>=0.23.1,<0.24.0)",
+    "sphedron @ git+https://github.com/ayghri/sphedron.git",
 ]
 
 [tool.poetry]
