@@ -83,6 +83,7 @@ class EarthAE(nn.Module):
         width_base=32,
         num_layers=4,
         k: int = 3,
+        include_land_mask: bool = False,
         bottleneck_dropout=0.1,
     ):
         super().__init__()
@@ -93,6 +94,10 @@ class EarthAE(nn.Module):
 
         c = in_ch
         w = width_base
+        self.land_encoder = nn.Sequential()
+
+        if include_land_mask:
+            self.land_encoder = Block(1, in_ch, k=k)
 
         encoder_layers = []
         for i in range(num_layers - 1):
@@ -123,7 +128,12 @@ class EarthAE(nn.Module):
         decoder_layers.append(nn.AdaptiveAvgPool2d(map_size))
         self.decoder = nn.Sequential(*decoder_layers)
 
-    def forward(self, x):
+    def encode_land_mask(self, land_mask):
+        return self.land_encoder(land_mask)
+
+    def forward(self, x, land_mask=None):
+        if land_mask is not None:
+            x = x + self.encode_land_mask(land_mask)
         z = self.encoder(x)
         y = self.decoder(z)
         return z, y

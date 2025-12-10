@@ -1,0 +1,15 @@
+# Default config for scripts/05_train_encoder.py
+
+cesm_path: ~/scratch/CESM2/monthly
+checkpoint_dir: ~/alpine/checkpoints/
+
+batch_size: 4
+num_workers: 8
+prefetch_factor: 4
+pin_memory: true
+
+epochs: 10
+base_lr: 1e-3
+final_lr: 1e-5
+
+device_id: 0
