@@ -202,10 +202,10 @@ def main(
 
                 loss = criterion(fields, reconstruction)
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            clip_grad_norm_(model.parameters(), max_norm=1.0)
+            # optimizer.zero_grad()
+            # loss.backward()
+            # optimizer.step()
+            # clip_grad_norm_(model.parameters(), max_norm=1.0)
             num_batches += 1
             loss_val = loss.item()
             total_loss += loss_val
@@ -216,13 +216,7 @@ def main(
                     model.state_dict(),
                     f"/buckets/checkpoints/earthae_step_{step}.ckpt",
                 )
-            wandb.log(
-                {
-                    "epoch": e,
-                    "step": step,
-                    "mse_loss": loss_val,
-                }
-            )
+            # wandb.log({"epoch": e, "step": step, "mse_loss": loss_val})
 
             step += 1
 

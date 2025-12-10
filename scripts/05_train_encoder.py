@@ -25,8 +25,6 @@ from nemulate.data.sources import get_cesm2_members_ids
 from nemulate.datasets import ClimateDataset
 from nemulate.models.coders import EarthAE
 
-wandb.init(project="ssh", name="auto-encoder-run")
-
 
 @dataclass
 class TrainConfig:
@@ -49,6 +47,8 @@ cs.store(name="train_encoder", node=TrainConfig)
 
 @hydra.main(version_base="1.3", config_name="train_encoder")
 def main(cfg: TrainConfig) -> None:
+    wandb.init(project="ssh", name="auto-encoder-run")
+
     cesm_path = Path(to_absolute_path(cfg.cesm_path))
     checkpoint_dir = Path(to_absolute_path(cfg.checkpoint_dir))
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
