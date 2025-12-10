@@ -141,24 +141,23 @@ def main(cfg: DictConfig) -> None:
             with torch.autocast(device_type="cuda", dtype=bhalf):
                 # (batch_size, num_vars, interval, lat, lon)
                 fields = batch["vars"].to(device)
-                # (batch_size, num_vars, lat, lon), True on land
                 mask = batch["land_mask"].to(device)
-                # (batch_size, num_vars, lat, lon)
-                mask_encoded = model.encode_land_mask(mask)
-                # (batch_size, interval, num_vars lat, lon)
+                # (batch_size, num_vars, interval, lat, lon), True on land
+   #             print(fields.shape, mask.shape)
                 fields = fields.transpose(1, 2).contiguous()
-                fields = fields + mask_encoded.unsqueeze(1)
+                mask = mask.transpose(1, 2).contiguous()
+   #             print(fields.shape, mask.shape)
                 fields = fields.view(-1, *fields.shape[2:])
+                mask = mask.view(-1, *mask.shape[2:])
 
-                _, reconstruction = model(fields)
-                reconstruction = reconstruction.view(
-                    batch["vars"].shape[0],
-                    batch["vars"].shape[2],
-                    fields.shape[1:],
-                )
+  #              print(fields.shape, mask.shape)
+                _, reconstruction = model(fields, land_mask=mask.float())
+                
+ #               print(fields.shape, mask.shape, reconstruction.shape)
                 reconstruction = reconstruction.masked_fill(
-                    mask.unsqueeze(1), 0.0
+                    mask, 0.0
                 )
+#                print(fields.shape, mask.shape, reconstruction.shape)
 
                 loss = criterion(fields, reconstruction)
 
