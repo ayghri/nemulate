@@ -45,7 +45,9 @@ cs = ConfigStore.instance()
 cs.store(name="train_encoder", node=TrainConfig)
 
 
-@hydra.main(version_base="1.3", config_name="train_encoder")
+@hydra.main(
+    version_base="1.3", config_name="train_encoder", config_path="./conf"
+)
 def main(cfg: TrainConfig) -> None:
     wandb.init(project="ssh", name="auto-encoder-run")
 
