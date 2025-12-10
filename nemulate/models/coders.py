@@ -97,7 +97,7 @@ class EarthAE(nn.Module):
         self.land_encoder = nn.Sequential()
 
         if include_land_mask:
-            self.land_encoder = Block(1, in_ch, k=k)
+            self.land_encoder = Block(in_ch, in_ch, k=k)
 
         encoder_layers = []
         for i in range(num_layers - 1):
