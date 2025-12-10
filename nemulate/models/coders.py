@@ -5,6 +5,27 @@ import torch.nn.functional as F
 from .utils import get_layer
 
 
+class PixelBlock(nn.Module):
+    def __init__(self, c_in, c_out, k=3, act="silu", norm=True, dropout=0.0):
+        super().__init__()
+        self.conv1 = nn.Conv2d(c_in, c_out, k, padding="same")
+        self.norm1 = (
+            nn.GroupNorm(min(32, c_out), c_out) if norm else nn.Identity()
+        )
+        self.conv2 = nn.Conv2d(c_out, c_out, k, padding="same")
+        self.norm2 = (
+            nn.GroupNorm(min(32, c_out), c_out) if norm else nn.Identity()
+        )
+        self.drop = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        self.activation = get_layer(act, inplace=True)
+
+    def forward(self, x):
+        x = self.activation(self.norm1(self.conv1(x)))
+        x = self.drop(x)
+        x = self.activation(self.norm2(self.conv2(x)))
+        return x
+
+
 class Block(nn.Module):
     def __init__(self, c_in, c_out, k=3, act="silu", norm=True, dropout=0.0):
         super().__init__()
@@ -97,7 +118,7 @@ class EarthAE(nn.Module):
         self.land_encoder = nn.Sequential()
 
         if include_land_mask:
-            self.land_encoder = Block(in_ch, in_ch, k=k)
+            self.land_encoder = PixelBlock(in_ch, in_ch, k=3)
 
         encoder_layers = []
         for i in range(num_layers - 1):
