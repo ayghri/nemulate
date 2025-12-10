@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from pathlib import Path
 
 import hydra
@@ -119,54 +118,68 @@ def main(cfg: DictConfig) -> None:
         pin_memory=cfg.pin_memory,
     )
 
+    # Handle resume configuration (step for scheduler + logging)
+    resume_ckpt = cfg.get("resume_checkpoint")
+    resume_step = int(cfg.get("resume_step", 0)) if resume_ckpt else 0
+
     epochs = cfg.epochs
     total_steps = epochs * len(climate_dl)
 
+    # LR scheduler: when resuming, align internal epoch so LR picks up
     scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer,
         start_factor=1.0,
         end_factor=final_lr / base_lr,
         total_iters=total_steps,
+        last_epoch=resume_step - 1 if resume_step > 0 else -1,
     )
-    step = 0
 
-    print("Saving initial ckpt")
-    torch.save(model.state_dict(), str(checkpoint_dir / "earthae_initial.ckpt"))
+    if resume_ckpt:
+        resume_path = Path(to_absolute_path(resume_ckpt))
+        print(f"Resuming from checkpoint {resume_path} at step {resume_step}")
+        state_dict = torch.load(resume_path, map_location=device)
+        model.load_state_dict(state_dict)
+        step = resume_step
+    else:
+        step = 0
+        print("Saving initial ckpt")
+        torch.save(
+            model.state_dict(),
+            str(checkpoint_dir / "earthae_initial.ckpt"),
+        )
 
     for e in range(epochs):
         pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}")
         total_loss = 0.0
         num_batches = 0
         for batch in pbar:
+            num_batches += 1
             with torch.autocast(device_type="cuda", dtype=bhalf):
                 # (batch_size, num_vars, interval, lat, lon)
                 fields = batch["vars"].to(device)
                 mask = batch["land_mask"].to(device)
-                # (batch_size, num_vars, interval, lat, lon), True on land
-   #             print(fields.shape, mask.shape)
+
+                # (batch_size, interval, num_vars, lat, lon)
                 fields = fields.transpose(1, 2).contiguous()
                 mask = mask.transpose(1, 2).contiguous()
-   #             print(fields.shape, mask.shape)
+
+                # (batch_size*interval, num_vars, lat, lon)
                 fields = fields.view(-1, *fields.shape[2:])
                 mask = mask.view(-1, *mask.shape[2:])
 
-  #              print(fields.shape, mask.shape)
                 _, reconstruction = model(fields, land_mask=mask.float())
-                
- #               print(fields.shape, mask.shape, reconstruction.shape)
-                reconstruction = reconstruction.masked_fill(
-                    mask, 0.0
-                )
-#                print(fields.shape, mask.shape, reconstruction.shape)
+                reconstruction = reconstruction.masked_fill(mask, 0.0)
 
                 loss = criterion(fields, reconstruction)
 
             optimizer.zero_grad()
+
             loss.backward()
+            clip_grad_norm_(model.parameters(), max_norm=1.0)
+
             optimizer.step()
             scheduler.step()
-            clip_grad_norm_(model.parameters(), max_norm=1.0)
-            num_batches += 1
+
             loss_val = loss.item()
             total_loss += loss_val
             pbar.set_postfix(loss=total_loss / num_batches)
