@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import hydra
-from hydra.core.config_store import ConfigStore
+from omegaconf import DictConfig, OmegaConf
 from hydra.utils import to_absolute_path
 from torch import nn
 from torch.nn.utils import clip_grad_norm_
@@ -26,30 +26,17 @@ from nemulate.datasets import ClimateDataset
 from nemulate.models.coders import EarthAE
 
 
-@dataclass
-class TrainConfig:
-    cesm_path: str
-    checkpoint_dir: str = "/buckets/checkpoints"
-    batch_size: int = 4
-    num_workers: int = 8
-    prefetch_factor: int = 4
-    pin_memory: bool = True
-    epochs: int = 10
-    base_lr: float = 1e-3
-    final_lr: float = 1e-5
-
-    device_id = 0
-
-
-cs = ConfigStore.instance()
-cs.store(name="train_encoder", node=TrainConfig)
-
-
 @hydra.main(
-    version_base="1.3", config_name="train_encoder", config_path="./conf"
+    version_base="1.3", config_name="train_encoder", config_path="../conf"
 )
-def main(cfg: TrainConfig) -> None:
-    wandb.init(project="ssh", name="auto-encoder-run")
+def main(cfg: DictConfig) -> None:
+    print(OmegaConf.to_yaml(cfg, resolve=True))
+
+    wandb.init(
+        project="ssh",
+        name="auto-encoder-run",
+        config=OmegaConf.to_container(cfg, resolve=True),
+    )
 
     cesm_path = Path(to_absolute_path(cfg.cesm_path))
     checkpoint_dir = Path(to_absolute_path(cfg.checkpoint_dir))
