@@ -95,10 +95,6 @@ def main(cfg: DictConfig) -> None:
     base_lr = cfg.base_lr
     final_lr = cfg.final_lr
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=base_lr, weight_decay=1e-3
-    )
-
     climate_ds = ClimateDataset(
         merged_path,
         members=members,
@@ -124,6 +120,13 @@ def main(cfg: DictConfig) -> None:
 
     epochs = cfg.epochs
     total_steps = epochs * len(climate_dl)
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=base_lr, weight_decay=1e-3
+    )
+    if resume_step > 0:
+        for group in optimizer.param_groups:
+            group.setdefault("initial_lr", group["lr"])
 
     # LR scheduler: when resuming, align internal epoch so LR picks up
     scheduler = torch.optim.lr_scheduler.LinearLR(
