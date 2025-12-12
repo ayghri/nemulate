@@ -130,7 +130,7 @@ def main(cfg: DictConfig) -> None:
         1 - resume_step / total_steps
     )
     # for param_group in optimizer.param_groups:
-        # param_group["lr"] = initial_lr
+    # param_group["lr"] = initial_lr
     for group in optimizer.param_groups:
         group.setdefault("initial_lr", initial_lr)
 
@@ -156,6 +156,7 @@ def main(cfg: DictConfig) -> None:
         )
 
     optimizer.zero_grad()
+    checkpoint_interval = 1000 // grad_accumulatino_steps
 
     for e in range(epochs):
         pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}", initial=step)
@@ -192,9 +193,10 @@ def main(cfg: DictConfig) -> None:
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
+
                 step += 1
 
-                if step % 1000 == 0:
+                if step % checkpoint_interval == 0:
                     torch.save(
                         model.state_dict(),
                         str(checkpoint_dir / f"earthae_step_{step}.ckpt"),
