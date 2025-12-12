@@ -8,7 +8,7 @@ num_workers: 8
 prefetch_factor: 3
 pin_memory: true
 
-epochs: 10
+epochs: 4
 base_lr: 1e-3
 final_lr: 1e-5
 grad_accumulation_steps: 4

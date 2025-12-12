@@ -156,7 +156,7 @@ def main(cfg: DictConfig) -> None:
     optimizer.zero_grad()
 
     for e in range(epochs):
-        pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}")
+        pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}", initial=step)
         total_loss = 0.0
         num_batches = 0
         step_loss = 0.0
@@ -210,7 +210,10 @@ def main(cfg: DictConfig) -> None:
 
             loss_val = loss.item() * grad_accumulatino_steps
             total_loss += loss_val
-            pbar.set_postfix(loss=total_loss / num_batches)
+            pbar.set_postfix(
+                loss=total_loss / num_batches,
+                lr=optimizer.param_groups[0]["lr"],
+            )
         torch.save(
             model.state_dict(),
             str(checkpoint_dir / f"earthae_{e}.ckpt"),
