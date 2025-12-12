@@ -80,17 +80,6 @@ def main(cfg: DictConfig) -> None:
 
     members = get_cesm2_members_ids(merged_path, var_name=var_names)
 
-    model = EarthAE(width_base=64, num_layers=4, include_land_mask=True).to(
-        device, dtype=bhalf
-    )
-
-    with torch.autocast(device_type="cuda:0", dtype=bhalf):
-        print(
-            summary(model, input_data=torch.randn(16, 5, 180, 360).to(device))
-        )
-
-    criterion = nn.MSELoss()
-
     # Optimizer and LR scheduler: linearly decay from base_lr to final_lr
     base_lr = cfg.base_lr
     final_lr = cfg.final_lr
@@ -114,6 +103,17 @@ def main(cfg: DictConfig) -> None:
         pin_memory=cfg.pin_memory,
     )
 
+    model = EarthAE(width_base=64, num_layers=4, include_land_mask=True).to(
+        device, dtype=bhalf
+    )
+
+    with torch.autocast(device_type="cuda:0", dtype=bhalf):
+        print(
+            summary(model, input_data=torch.randn(16, 5, 180, 360).to(device))
+        )
+
+    criterion = nn.MSELoss()
+
     # Handle resume configuration (step for scheduler + logging)
     resume_ckpt = cfg.get("resume_checkpoint")
     resume_step = int(cfg.get("resume_step", 0)) if resume_ckpt else 0
@@ -121,27 +121,43 @@ def main(cfg: DictConfig) -> None:
     grad_accumulatino_steps = cfg.get("grad_accumulation_steps", 1)
     epochs = cfg.epochs
     total_steps = (epochs * len(climate_dl)) // grad_accumulatino_steps
-
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=base_lr, weight_decay=1e-3
-    )
-
     initial_lr = final_lr + (base_lr - final_lr) * (
         1 - resume_step / total_steps
     )
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=initial_lr, weight_decay=1e-3
+    )
+
     # for param_group in optimizer.param_groups:
     # param_group["lr"] = initial_lr
-    for group in optimizer.param_groups:
-        group.setdefault("initial_lr", initial_lr)
+    # for group in optimizer.param_groups:
+    # group.setdefault("initial_lr", initial_lr)
 
     scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer,
-        start_factor=initial_lr / base_lr,
+        start_factor=1.0,
         end_factor=final_lr / base_lr,
         total_iters=total_steps,
-        last_epoch=resume_step - 1 if resume_step > 0 else -1,
+        # last_epoch=resume_step - 1 if resume_step > 0 else -1,
+        last_epoch=-1,
     )
     step = resume_step
+    warmup_steps = 200 // grad_accumulatino_steps
+    if warmup_steps > 0:
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[
+                torch.optim.lr_scheduler.LinearLR(
+                    optimizer,
+                    start_factor=0.0,
+                    end_factor=1.0,
+                    total_iters=warmup_steps,
+                ),
+                scheduler,
+            ],
+            milestones=[warmup_steps],
+        )
 
     if resume_ckpt:
         resume_path = Path(to_absolute_path(resume_ckpt))
