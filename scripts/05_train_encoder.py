@@ -118,44 +118,49 @@ def main(cfg: DictConfig) -> None:
     resume_ckpt = cfg.get("resume_checkpoint")
     resume_step = int(cfg.get("resume_step", 0)) if resume_ckpt else 0
 
+    grad_accumulatino_steps = cfg.get("grad_accumulation_steps", 1)
     epochs = cfg.epochs
-    total_steps = epochs * len(climate_dl)
+    total_steps = (epochs * len(climate_dl)) // grad_accumulatino_steps
 
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=base_lr, weight_decay=1e-3
     )
-    if resume_step > 0:
-        for group in optimizer.param_groups:
-            group.setdefault("initial_lr", group["lr"])
 
-    # LR scheduler: when resuming, align internal epoch so LR picks up
+    initial_lr = final_lr + (base_lr - final_lr) * (
+        1 - resume_step / total_steps
+    )
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = initial_lr
+
     scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer,
-        start_factor=1.0,
+        start_factor=initial_lr / base_lr,
         end_factor=final_lr / base_lr,
         total_iters=total_steps,
         last_epoch=resume_step - 1 if resume_step > 0 else -1,
     )
+    step = resume_step
 
     if resume_ckpt:
         resume_path = Path(to_absolute_path(resume_ckpt))
         print(f"Resuming from checkpoint {resume_path} at step {resume_step}")
         state_dict = torch.load(resume_path, map_location=device)
         model.load_state_dict(state_dict)
-        step = resume_step
     else:
-        step = 0
         print("Saving initial ckpt")
         torch.save(
             model.state_dict(),
             str(checkpoint_dir / "earthae_initial.ckpt"),
         )
 
+    optimizer.zero_grad()
+
     for e in range(epochs):
         pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}")
         total_loss = 0.0
         num_batches = 0
-        for batch in pbar:
+        step_loss = 0.0
+        for batch_idx, batch in enumerate(pbar):
             num_batches += 1
             with torch.autocast(device_type="cuda", dtype=bhalf):
                 # (batch_size, num_vars, interval, lat, lon)
@@ -174,34 +179,38 @@ def main(cfg: DictConfig) -> None:
                 reconstruction = reconstruction.masked_fill(mask, 0.0)
 
                 loss = criterion(fields, reconstruction)
-
-            optimizer.zero_grad()
+                loss = loss / grad_accumulatino_steps
 
             loss.backward()
-            clip_grad_norm_(model.parameters(), max_norm=1.0)
+            step_loss += loss.item()
 
-            optimizer.step()
-            scheduler.step()
+            if (batch_idx + 1) % grad_accumulatino_steps == 0:
+                clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-            loss_val = loss.item()
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad()
+                step += 1
+
+                if step % 1000 == 0:
+                    torch.save(
+                        model.state_dict(),
+                        str(checkpoint_dir / f"earthae_step_{step}.ckpt"),
+                    )
+
+                wandb.log(
+                    {
+                        "epoch": e,
+                        "step": step,
+                        "mse_loss": step_loss,
+                        "lr": optimizer.param_groups[0]["lr"],
+                    }
+                )
+                step_loss = 0.0
+
+            loss_val = loss.item() * grad_accumulatino_steps
             total_loss += loss_val
             pbar.set_postfix(loss=total_loss / num_batches)
-
-            if (step + 1) % 1000 == 0:
-                torch.save(
-                    model.state_dict(),
-                    str(checkpoint_dir / f"earthae_step_{step}.ckpt"),
-                )
-            wandb.log(
-                {
-                    "epoch": e,
-                    "step": step,
-                    "mse_loss": loss_val,
-                    "lr": optimizer.param_groups[0]["lr"],
-                }
-            )
-
-            step += 1
         torch.save(
             model.state_dict(),
             str(checkpoint_dir / f"earthae_{e}.ckpt"),

@@ -88,7 +88,7 @@ def main(
     device = torch.device("cuda:0")
 
     tfm = nn.Sequential(
-        Lambda(lambda ins: ins.compute()),
+        # Lambda(lambda ins: ins.compute()),
         SubstractForcedResponse(
             cesm_path.joinpath("moments"),
             "{var}_forced_response_1.nc",
@@ -104,7 +104,7 @@ def main(
         ),
         RandomRotatedRegrid(
             grid_path=cesm_path / "grid_info.nc",
-            p=0.0,
+            p=0.5,
         ),
         AddNanMask(var_names),
         AddXYZ(),
@@ -141,86 +141,76 @@ def main(
         pin_memory=pin_memory,
     )
 
-    epochs = 10
-    step = 0
+    # epochs = 10
+    # step = 0
 
-    model = EarthAE(width_base=64, num_layers=4, include_land_mask=True).to(
-        device, dtype=bhalf
-    )
+    # model = EarthAE(width_base=64, num_layers=4, include_land_mask=True).to(
+    #     device, dtype=bhalf
+    # )
 
-    with torch.autocast(device_type="cuda:0", dtype=bhalf):
-        print(
-            summary(model, input_data=torch.randn(16, 5, 180, 360).to(device))
-        )
+    # # with torch.autocast(device_type="cuda:0", dtype=bhalf):
+    # #     print(
+    # #         summary(model, input_data=torch.randn(16, 5, 180, 360).to(device))
+    # #     )
 
-    criterion = nn.MSELoss()
+    # criterion = nn.MSELoss()
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=1e-4, weight_decay=1e-3
-    )
+    # optimizer = torch.optim.AdamW(
+    #     model.parameters(), lr=1e-4, weight_decay=1e-3
+    # )
 
-    print("Saving initial ckpt")
-    torch.save(model.state_dict(), f"/buckets/checkpoints/earthae_initial.ckpt")
 
-    pbar = tqdm(climate_dl, desc=f"Browsing dataloader")
+    pbar = tqdm(climate_dl, desc="Browsing dataloader")
     for batch in pbar:
-        fields = batch["vars"]
-        # fields = fields.transpose(1, 2).contiguous()
+        # (batch_size, interval, num_vars, lat, lon)
+        fields = batch["vars"].to(device)
+        masks = batch["land_mask"].to(device)
+        fields = fields.transpose(1, 2).contiguous()
+        fields = fields.view(-1, *fields.shape[2:])
+        masks = masks.transpose(1, 2).contiguous()
+        masks = masks.view(-1, *masks.shape[2:])
 
-        pbar = tqdm(climate_dl, desc=f"EarchAE")
-        for batch in pbar:
-            with torch.autocast(device_type="cuda", dtype=bhalf):
-                # (batch_size, interval, num_vars, lat, lon)
-                fields = batch["vars"].to(device)
-                # (batch_size, num_vars, lat, lon)
-                mask = batch["land_mask"].to(device)
-                print(fields.shape, mask.shape)
-                fields = fields.transpose(1, 2).contiguous()
-                fields = fields.view(-1, *fields.shape[2:])
-                print(fields.shape, mask.shape)
-                raise NotImplementedError("Masking not implemented yet")
+    # for e in range(epochs):
+    #     pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}")
+    #     total_loss = 0.0
+    #     num_batches = 0
+    #     for batch in pbar:
+    #         with torch.autocast(device_type="cuda", dtype=bhalf):
+    #             # (batch_size, interval, num_vars, lat, lon)
+    #             fields = batch["vars"].to(device)
+    #             # (batch_size, num_vars, lat, lon)
+    #             mask = batch["land_mask"].to(device)
+    #             mask_encoded = model.encode_land_mask(mask)
+    #             fields = fields + mask_encoded.unsqueeze(1)
+    #             fields = fields.transpose(1, 2).contiguous()
+    #             fields = fields.view(-1, *fields.shape[2:])
 
-    for e in range(epochs):
-        pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}")
-        total_loss = 0.0
-        num_batches = 0
-        for batch in pbar:
-            with torch.autocast(device_type="cuda", dtype=bhalf):
-                # (batch_size, interval, num_vars, lat, lon)
-                fields = batch["vars"].to(device)
-                # (batch_size, num_vars, lat, lon)
-                mask = batch["land_mask"].to(device)
-                mask_encoded = model.encode_land_mask(mask)
-                fields = fields + mask_encoded.unsqueeze(1)
-                fields = fields.transpose(1, 2).contiguous()
-                fields = fields.view(-1, *fields.shape[2:])
+    #             _, reconstruction = model(fields)
+    #             reconstruction = reconstruction.masked_fill(
+    #                 mask.unsqueeze(1) == 0, 0.0
+    #             )
 
-                _, reconstruction = model(fields)
-                reconstruction = reconstruction.masked_fill(
-                    mask.unsqueeze(1) == 0, 0.0
-                )
+    #             loss = criterion(fields, reconstruction)
 
-                loss = criterion(fields, reconstruction)
+    #         # optimizer.zero_grad()
+    #         # loss.backward()
+    #         # optimizer.step()
+    #         # clip_grad_norm_(model.parameters(), max_norm=1.0)
+    #         num_batches += 1
+    #         loss_val = loss.item()
+    #         total_loss += loss_val
+    #         pbar.set_postfix(loss=total_loss / num_batches)
 
-            # optimizer.zero_grad()
-            # loss.backward()
-            # optimizer.step()
-            # clip_grad_norm_(model.parameters(), max_norm=1.0)
-            num_batches += 1
-            loss_val = loss.item()
-            total_loss += loss_val
-            pbar.set_postfix(loss=total_loss / num_batches)
+    #         if (step + 1) % 1000 == 0:
+    #             torch.save(
+    #                 model.state_dict(),
+    #                 f"/buckets/checkpoints/earthae_step_{step}.ckpt",
+    #             )
+    #         # wandb.log({"epoch": e, "step": step, "mse_loss": loss_val})
 
-            if (step + 1) % 1000 == 0:
-                torch.save(
-                    model.state_dict(),
-                    f"/buckets/checkpoints/earthae_step_{step}.ckpt",
-                )
-            # wandb.log({"epoch": e, "step": step, "mse_loss": loss_val})
+    #         step += 1
 
-            step += 1
-
-        torch.save(model.state_dict(), f"/buckets/checkpoints/earthae_{e}.ckpt")
+    #     torch.save(model.state_dict(), f"/buckets/checkpoints/earthae_{e}.ckpt")
 
 
 if __name__ == "__main__":

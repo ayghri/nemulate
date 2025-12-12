@@ -5,15 +5,18 @@ checkpoint_dir: ~/alpine/checkpoints/
 
 batch_size: 4
 num_workers: 8
-prefetch_factor: 4
+prefetch_factor: 3
 pin_memory: true
 
 epochs: 10
 base_lr: 1e-3
 final_lr: 1e-5
+grad_accumulation_steps: 4
+
 
 device_id: 0
 
 # Resume options
-resume_checkpoint: null  # path to .ckpt file or null
-resume_step: 0          # starting global step when resuming
+resume_checkpoint: null # path to .ckpt file or null
+resume_step: 0 # starting global step when resuming
+

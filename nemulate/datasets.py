@@ -357,6 +357,7 @@ class ClimateDataset(Dataset):
         end_year: int = 2100,
         transform=None,
         loading_time_chunck_size=120,
+        compute: bool = True,
     ):
         self.data_path = Path(data_path)
         self.variables = variables
@@ -364,6 +365,7 @@ class ClimateDataset(Dataset):
         self.interval = interval
         self.start_year = start_year
         self.end_year = end_year
+        self.compute = compute
 
         if not self.members:
             raise ValueError("The 'members' list cannot be empty.")
@@ -429,6 +431,8 @@ class ClimateDataset(Dataset):
                 end_year=self.end_year,
                 time_chunk_size=self.loading_time_chunk_size,
             ).isel(time=slice(start_time, end_time))
+            if self.compute:
+                ds = ds.compute()
             member_data.append(ds)
 
         stacked_data = xr.merge(member_data, compat="no_conflicts")

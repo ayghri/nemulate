@@ -105,6 +105,7 @@ class EarthAE(nn.Module):
         num_layers=4,
         k: int = 3,
         include_land_mask: bool = False,
+        land_mask_channels: int = 1,
         bottleneck_dropout=0.1,
     ):
         super().__init__()
