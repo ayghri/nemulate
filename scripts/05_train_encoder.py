@@ -129,8 +129,10 @@ def main(cfg: DictConfig) -> None:
     initial_lr = final_lr + (base_lr - final_lr) * (
         1 - resume_step / total_steps
     )
-    for param_group in optimizer.param_groups:
-        param_group["lr"] = initial_lr
+    # for param_group in optimizer.param_groups:
+        # param_group["lr"] = initial_lr
+    for group in optimizer.param_groups:
+        group.setdefault("initial_lr", initial_lr)
 
     scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer,
