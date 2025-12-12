@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Tuple
 import torch
 from torch import nn
 from torch import Tensor
@@ -145,6 +145,7 @@ class EarthConv2d(nn.Conv2d):
         dilation: _size_2_t = 1,
         groups: int = 1,
         bias: bool = True,
+        padding: _size_2_t = -1,
         device=None,
         dtype=None,
     ) -> None:
@@ -164,9 +165,15 @@ class EarthConv2d(nn.Conv2d):
         )
 
         kernel_size_ = _pair(kernel_size)
+        padding = _pair(padding)
+        pad_latitude, pad_longitude = padding
+        if pad_latitude < 0:
+            pad_latitude = (kernel_size_[0] - 1) // 2
+        if pad_longitude < 0:
+            pad_longitude = (kernel_size_[1] - 1) // 2
 
-        self.pad_lat = (kernel_size_[0] - 1) // 2
-        self.pad_lon = (kernel_size_[1] - 1) // 2
+        self.pad_lat = pad_latitude
+        self.pad_lon = pad_longitude
 
     def _pad_on_sphere(self, x: Tensor):
         if self.pad_lat:

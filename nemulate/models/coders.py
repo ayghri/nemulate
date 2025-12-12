@@ -105,7 +105,7 @@ class EarthAE(nn.Module):
         num_layers=4,
         k: int = 3,
         include_land_mask: bool = False,
-        land_mask_channels: int = 1,
+        land_mask_channels: int = 4,
         bottleneck_dropout=0.1,
     ):
         super().__init__()
@@ -119,7 +119,7 @@ class EarthAE(nn.Module):
         self.land_encoder = nn.Sequential()
 
         if include_land_mask:
-            self.land_encoder = PixelBlock(in_ch, in_ch, k=3)
+            self.land_encoder = PixelBlock(land_mask_channels, in_ch, k=3)
 
         encoder_layers = []
         for i in range(num_layers - 1):

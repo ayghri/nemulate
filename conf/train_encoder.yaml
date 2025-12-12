@@ -3,6 +3,9 @@
 cesm_path: ~/scratch/CESM2/monthly
 checkpoint_dir: ~/alpine/checkpoints/
 
+model_name: inverted_earth_wide
+model_arch: InvertedEarthAE
+
 batch_size: 4
 num_workers: 8
 prefetch_factor: 3
@@ -10,9 +13,8 @@ pin_memory: true
 
 epochs: 4
 base_lr: 5e-4
-final_lr: 1e-5
+final_lr: 1e-6
 grad_accumulation_steps: 4
-
 
 device_id: 0
 

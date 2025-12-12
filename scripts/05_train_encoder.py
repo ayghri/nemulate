@@ -22,7 +22,10 @@ from nemulate.data.transforms import SubstractForcedResponse
 from nemulate.data.transforms import UnwrapFields
 from nemulate.data.sources import get_cesm2_members_ids
 from nemulate.datasets import ClimateDataset
-from nemulate.models.coders import EarthAE
+
+# # from nemulate.models.coders import EarthAE
+# from nemulate.models.inverted_earth import EarthAE_Wide
+from nemulate.models import get_model
 
 
 @hydra.main(
@@ -40,6 +43,9 @@ def main(cfg: DictConfig) -> None:
     cesm_path = Path(to_absolute_path(cfg.cesm_path))
     checkpoint_dir = Path(to_absolute_path(cfg.checkpoint_dir))
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    model_name = cfg["model_name"]
+    model_arch = cfg["model_arch"]
 
     merged_path = cesm_path / "merged"
     var_names = list(sorted([p.stem for p in merged_path.glob("*")]))
@@ -103,8 +109,9 @@ def main(cfg: DictConfig) -> None:
         pin_memory=cfg.pin_memory,
     )
 
-    model = EarthAE(width_base=64, num_layers=4, include_land_mask=True).to(
-        device, dtype=bhalf
+    # model = EarthAE(width_base=64, num_layers=4, include_land_mask=True).
+    model = get_model(model_arch)(include_land_mask=True).to(
+        device, dtype=bhalf, memory_format=torch.channels_last
     )
 
     with torch.autocast(device_type="cuda:0", dtype=bhalf):
@@ -118,9 +125,9 @@ def main(cfg: DictConfig) -> None:
     resume_ckpt = cfg.get("resume_checkpoint")
     resume_step = int(cfg.get("resume_step", 0)) if resume_ckpt else 0
 
-    grad_accumulatino_steps = cfg.get("grad_accumulation_steps", 1)
+    grad_accumulation_steps = cfg.get("grad_accumulation_steps", 1)
     epochs = cfg.epochs
-    total_steps = (epochs * len(climate_dl)) // grad_accumulatino_steps
+    total_steps = (epochs * len(climate_dl)) // grad_accumulation_steps
 
     initial_lr = final_lr + (base_lr - final_lr) * (
         1 - resume_step / total_steps
@@ -131,36 +138,32 @@ def main(cfg: DictConfig) -> None:
     )
 
     step = resume_step
-    warmup_steps = 200 // grad_accumulatino_steps
+    warmup_steps = 200 // grad_accumulation_steps
 
     # for param_group in optimizer.param_groups:
     # param_group["lr"] = initial_lr
     # for group in optimizer.param_groups:
     # group.setdefault("initial_lr", initial_lr)
+    from nemulate.utils.train import WarmupScheduler
 
-    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+    scheduler = WarmupScheduler(
         optimizer,
-        start_factor=1e-12,
-        end_factor=1.0,
-        total_iters=warmup_steps,
+        warmup_steps=warmup_steps,
+        after_scheduler=torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=1.0,
+            end_factor=final_lr / base_lr,
+            total_iters=total_steps - warmup_steps,
+        ),
     )
-
-    decay_scheduler = torch.optim.lr_scheduler.LinearLR(
-        optimizer,
-        start_factor=1.0,
-        end_factor=final_lr / base_lr,
-        total_iters=total_steps - warmup_steps,
-        # last_epoch=resume_step - 1 if resume_step > 0 else -1,
-        # last_epoch=-1,
-    )
-    scheduler = torch.optim.lr_scheduler.SequentialLR(
-        optimizer,
-        schedulers=[
-            warmup_scheduler,
-            decay_scheduler,
-        ],
-        milestones=[warmup_steps],
-    )
+    # scheduler = torch.optim.lr_scheduler.SequentialLR(
+    #     optimizer,
+    #     schedulers=[
+    #         warmup_scheduler,
+    #         decay_scheduler,
+    #     ],
+    #     milestones=[warmup_steps],
+    # )
 
     if resume_ckpt:
         resume_path = Path(to_absolute_path(resume_ckpt))
@@ -175,7 +178,8 @@ def main(cfg: DictConfig) -> None:
         )
 
     optimizer.zero_grad()
-    checkpoint_interval = 1000 // grad_accumulatino_steps
+    checkpoint_interval = 1000
+    # // grad_accumulation_steps
 
     for e in range(epochs):
         pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}", initial=step)
@@ -184,6 +188,7 @@ def main(cfg: DictConfig) -> None:
         step_loss = 0.0
         for batch_idx, batch in enumerate(pbar):
             num_batches += 1
+
             with torch.autocast(device_type="cuda", dtype=bhalf):
                 # (batch_size, num_vars, interval, lat, lon)
                 fields = batch["vars"].to(device)
@@ -194,45 +199,50 @@ def main(cfg: DictConfig) -> None:
                 mask = mask.transpose(1, 2).contiguous()
 
                 # (batch_size*interval, num_vars, lat, lon)
-                fields = fields.view(-1, *fields.shape[2:])
-                mask = mask.view(-1, *mask.shape[2:])
+                fields = fields.view(-1, *fields.shape[2:]).to(
+                    memory_format=torch.channels_last
+                )
+                mask = mask.view(-1, *mask.shape[2:]).to(
+                    memory_format=torch.channels_last
+                )
 
                 _, reconstruction = model(fields, land_mask=mask.float())
                 reconstruction = reconstruction.masked_fill(mask, 0.0)
 
                 loss = criterion(fields, reconstruction)
-                loss = loss / grad_accumulatino_steps
+                loss = loss / grad_accumulation_steps
 
             loss.backward()
             step_loss += loss.item()
+            step += 1
 
-            if (batch_idx + 1) % grad_accumulatino_steps == 0:
+            if (batch_idx + 1) % grad_accumulation_steps == 0:
                 clip_grad_norm_(model.parameters(), max_norm=1.0)
 
+                
                 scheduler.step()
                 optimizer.step()
                 optimizer.zero_grad()
 
-                step += 1
-
                 if step % checkpoint_interval == 0:
                     torch.save(
                         model.state_dict(),
-                        str(checkpoint_dir / f"earthae_step_{step}.ckpt"),
+                        str(checkpoint_dir / f"{model_name}_step_{step}.ckpt"),
                     )
 
-                wandb.log(
-                    {
-                        "epoch": e,
-                        "step": step,
-                        "mse_loss": step_loss,
-                        "lr": optimizer.param_groups[0]["lr"],
-                    }
-                )
                 step_loss = 0.0
 
-            loss_val = loss.item() * grad_accumulatino_steps
+            loss_val = loss.item() * grad_accumulation_steps
             total_loss += loss_val
+
+            wandb.log(
+                {
+                    "epoch": e,
+                    "step": step,
+                    "mse_loss": loss_val,
+                    "lr": optimizer.param_groups[0]["lr"],
+                }
+            )
             pbar.set_postfix(
                 loss=total_loss / num_batches,
                 lr=optimizer.param_groups[0]["lr"],
