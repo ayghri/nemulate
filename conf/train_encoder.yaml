@@ -9,7 +9,7 @@ prefetch_factor: 3
 pin_memory: true
 
 epochs: 4
-base_lr: 1e-3
+base_lr: 5e-4
 final_lr: 1e-5
 grad_accumulation_steps: 4
 

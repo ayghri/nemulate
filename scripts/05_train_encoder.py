@@ -121,6 +121,7 @@ def main(cfg: DictConfig) -> None:
     grad_accumulatino_steps = cfg.get("grad_accumulation_steps", 1)
     epochs = cfg.epochs
     total_steps = (epochs * len(climate_dl)) // grad_accumulatino_steps
+
     initial_lr = final_lr + (base_lr - final_lr) * (
         1 - resume_step / total_steps
     )
@@ -129,35 +130,37 @@ def main(cfg: DictConfig) -> None:
         model.parameters(), lr=initial_lr, weight_decay=1e-3
     )
 
+    step = resume_step
+    warmup_steps = 200 // grad_accumulatino_steps
+
     # for param_group in optimizer.param_groups:
     # param_group["lr"] = initial_lr
     # for group in optimizer.param_groups:
     # group.setdefault("initial_lr", initial_lr)
 
-    scheduler = torch.optim.lr_scheduler.LinearLR(
+    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+        optimizer,
+        start_factor=1e-12,
+        end_factor=1.0,
+        total_iters=warmup_steps,
+    )
+
+    decay_scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer,
         start_factor=1.0,
         end_factor=final_lr / base_lr,
-        total_iters=total_steps,
+        total_iters=total_steps - warmup_steps,
         # last_epoch=resume_step - 1 if resume_step > 0 else -1,
-        last_epoch=-1,
+        # last_epoch=-1,
     )
-    step = resume_step
-    warmup_steps = 200 // grad_accumulatino_steps
-    if warmup_steps > 0:
-        scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer,
-            schedulers=[
-                torch.optim.lr_scheduler.LinearLR(
-                    optimizer,
-                    start_factor=0.0,
-                    end_factor=1.0,
-                    total_iters=warmup_steps,
-                ),
-                scheduler,
-            ],
-            milestones=[warmup_steps],
-        )
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer,
+        schedulers=[
+            warmup_scheduler,
+            decay_scheduler,
+        ],
+        milestones=[warmup_steps],
+    )
 
     if resume_ckpt:
         resume_path = Path(to_absolute_path(resume_ckpt))
@@ -206,8 +209,8 @@ def main(cfg: DictConfig) -> None:
             if (batch_idx + 1) % grad_accumulatino_steps == 0:
                 clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-                optimizer.step()
                 scheduler.step()
+                optimizer.step()
                 optimizer.zero_grad()
 
                 step += 1
