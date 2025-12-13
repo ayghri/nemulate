@@ -16,6 +16,8 @@ base_lr: 5e-4
 final_lr: 1e-6
 grad_accumulation_steps: 4
 
+warmup_steps: 200
+
 device_id: 0
 
 # Resume options

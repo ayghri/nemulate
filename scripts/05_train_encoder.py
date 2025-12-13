@@ -96,7 +96,7 @@ def main(cfg: DictConfig) -> None:
         interval=24,
         loading_time_chunck_size=24,
         transform=tfm,
-        compute=True
+        compute=True,
     )
 
     climate_dl = DataLoader(
@@ -110,9 +110,9 @@ def main(cfg: DictConfig) -> None:
     )
 
     # model = EarthAE(width_base=64, num_layers=4, include_land_mask=True).
-    model = get_model(model_arch)(include_land_mask=True).to(
-        device, dtype=bhalf, memory_format=torch.channels_last
-    )
+    model = get_model(model_arch)(
+        include_land_mask=True, land_mask_channels=len(var_names)
+    ).to(device, dtype=bhalf, memory_format=torch.channels_last)
 
     with torch.autocast(device_type="cuda:0", dtype=bhalf):
         print(
@@ -138,7 +138,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     step = resume_step
-    
+
     warmup_steps = cfg.warmup_steps // grad_accumulation_steps
 
     # for param_group in optimizer.param_groups:
