@@ -116,9 +116,7 @@ def main(cfg: DictConfig) -> None:
     #   memory_format=torch.channels_last)
 
     with torch.autocast(device_type="cuda:0", dtype=bhalf):
-        print(
-            summary(model, input_data=torch.randn(16, 5, 180, 360).to(device))
-        )
+        summary(model, input_data=torch.randn(16, 5, 180, 360).to(device))
 
     criterion = nn.MSELoss()
 
@@ -188,10 +186,7 @@ def main(cfg: DictConfig) -> None:
         pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}", initial=step)
         total_loss = 0.0
         num_batches = 0
-        step_loss = 0.0
         for batch_idx, batch in enumerate(pbar):
-            num_batches += 1
-
             with torch.autocast(device_type="cuda", dtype=bhalf):
                 # (batch_size, num_vars, interval, lat, lon)
                 fields = batch["vars"].to(device)
@@ -214,7 +209,8 @@ def main(cfg: DictConfig) -> None:
                 loss = loss / grad_accumulation_steps
 
             loss.backward()
-            step_loss += loss.item()
+
+            num_batches += 1
             step += 1
 
             if (batch_idx + 1) % grad_accumulation_steps == 0:
@@ -224,13 +220,11 @@ def main(cfg: DictConfig) -> None:
                 scheduler.step()
                 optimizer.zero_grad()
 
-                if step % checkpoint_interval == 0:
-                    torch.save(
-                        model.state_dict(),
-                        str(checkpoint_dir / f"{model_name}_step_{step}.ckpt"),
-                    )
-
-                step_loss = 0.0
+            if step % checkpoint_interval == 0:
+                torch.save(
+                    model.state_dict(),
+                    str(checkpoint_dir / f"{model_name}_step_{step}.ckpt"),
+                )
 
             loss_val = loss.item() * grad_accumulation_steps
             total_loss += loss_val

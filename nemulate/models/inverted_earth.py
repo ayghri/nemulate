@@ -66,14 +66,10 @@ class InvertedResidual(nn.Module):
         self.stride = stride
         hidden_dim = in_c * expand_ratio
 
-        # 1. Main Path (Wide)
         self.conv = nn.Sequential(
-            # Expansion (1x1)
             nn.Conv2d(in_c, hidden_dim, 1, bias=False),
             nn.InstanceNorm2d(hidden_dim, affine=True),
             nn.SiLU(inplace=True),
-            # Spatial Processing (3x3) - Handles Stride here
-            # Groups=hidden_dim makes this a "Depthwise" conv (efficient for large expansion)
             nn.Conv2d(
                 hidden_dim,
                 hidden_dim,
@@ -85,14 +81,10 @@ class InvertedResidual(nn.Module):
             ),
             nn.InstanceNorm2d(hidden_dim, affine=True),
             nn.SiLU(inplace=True),
-            # Projection (1x1) - Back to output dim
             nn.Conv2d(hidden_dim, out_c, 1, bias=False),
             nn.InstanceNorm2d(out_c, affine=True),
-            # Note: No activation after projection in inverted residuals!
         )
 
-        # 2. Shortcut Path (Skip Connection)
-        # If dimensions change or we stride, we need to adapt the residual x
         self.shortcut = nn.Identity()
         if stride != 1 or in_c != out_c or padding == 0:
             self.shortcut = nn.Sequential(
@@ -103,9 +95,6 @@ class InvertedResidual(nn.Module):
             )
 
     def forward(self, x):
-        # x + self.conv(x)
-        # if self.stride == 1 and x.shape[1] == self.conv[-2].out_channels
-        # else self.shortcut(x) + self.conv(x)
         return self.conv(x) + self.shortcut(x)
 
 
@@ -130,11 +119,7 @@ class InvertedEarthAE(nn.Module):
         land_mask_channels: int = 1,
     ):
         super().__init__()
-        # self.padder = SafePadWrapper(factor=8)
-        # self.padder = nn.Identity()
 
-        # --- ENCODER ---
-        # Stem: 5 -> 64 (Full Res)
         self.stem = nn.Sequential(
             nn.Conv2d(input_channels, 64, 1, padding=0),
             nn.InstanceNorm2d(64, affine=True),
@@ -146,45 +131,32 @@ class InvertedEarthAE(nn.Module):
         if include_land_mask:
             self.land_encoder = nn.Conv2d(land_mask_channels, 64, 1, padding=0)
 
-        # Stage 1: 64 -> 128 (Downsample)
-        # self.enc1 = InvertedResidual(64, 128, stride=2, expand_ratio=4)
         self.enc1 = InvertedEarthResidual(64, 128, stride=2, padding=(13, 19))
 
-        # Stage 2: 128 -> 256 (Downsample)
         self.enc2 = InvertedResidual(128, 256, stride=2, expand_ratio=4)
 
-        # Stage 3: 256 -> 256 (Downsample to Bottleneck)
-        # Stride 2 here takes [48, 96] -> [24, 48]
-        # We output to the bottleneck. NO Activation/Norm on the final latent logic.
         self.enc3 = InvertedResidual(256, 256, stride=2, expand_ratio=4)
 
-        # The pure latent projection (removes the Norm/Residual bias from the last block)
         self.to_latent = nn.Conv2d(256, 256, 1)
 
-        # --- DECODER ---
-
-        # Stage 3 Up: [24, 48] -> [48, 96]
         self.up3 = nn.Sequential(
             # nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
             UpSampler(256, factor=2),
             InvertedResidual(256, 256, stride=1, padding=0),
         )
 
-        # Stage 2 Up: [48, 96] -> [96, 192]
         self.up2 = nn.Sequential(
             # nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
             UpSampler(256, factor=2),
             InvertedResidual(256, 128, stride=1, padding=1),
         )
 
-        # Stage 1 Up: [96, 192] -> [192, 384]
         self.up1 = nn.Sequential(
             # nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
             UpSampler(128, factor=2),
             InvertedResidual(128, 64, stride=1, padding=0),
         )
 
-        # Final Head
         self.head = nn.Conv2d(64, 5, 3)
 
     def encode_land_mask(self, land_mask):
