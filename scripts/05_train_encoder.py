@@ -177,7 +177,7 @@ def main(cfg: DictConfig) -> None:
         print("Saving initial ckpt")
         torch.save(
             model.state_dict(),
-            str(checkpoint_dir / "earthae_initial.ckpt"),
+            checkpoint_dir / f"{model_name}_initial.ckpt",
         )
 
     optimizer.zero_grad()
