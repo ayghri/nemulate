@@ -112,7 +112,8 @@ def main(cfg: DictConfig) -> None:
     # model = EarthAE(width_base=64, num_layers=4, include_land_mask=True).
     model = get_model(model_arch)(
         include_land_mask=True, land_mask_channels=len(var_names)
-    ).to(device, dtype=bhalf, memory_format=torch.channels_last)
+    ).to(device, dtype=bhalf)
+    #   memory_format=torch.channels_last)
 
     with torch.autocast(device_type="cuda:0", dtype=bhalf):
         print(
@@ -201,14 +202,14 @@ def main(cfg: DictConfig) -> None:
                 mask = mask.transpose(1, 2).contiguous()
 
                 # (batch_size*interval, num_vars, lat, lon)
-                fields = fields.view(-1, *fields.shape[2:]).to(
-                    memory_format=torch.channels_last
-                )
-                mask = mask.view(-1, *mask.shape[2:]).to(
-                    memory_format=torch.channels_last
-                )
+                # fields = fields.view(-1, *fields.shape[2:]).to(
+                #     memory_format=torch.channels_last
+                # )
+                # mask = mask.view(-1, *mask.shape[2:]).to(
+                #     # memory_format=torch.channels_last
+                # )
 
-                _, reconstruction = model(fields, land_mask=mask.float())
+                reconstruction, _ = model(fields, land_mask=mask.float())
                 reconstruction = reconstruction.masked_fill(mask, 0.0)
 
                 loss = criterion(fields, reconstruction)

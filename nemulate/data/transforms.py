@@ -35,7 +35,7 @@ class SubstractForcedResponse(torch.nn.Module):
             responses.append(
                 read_netcdf(
                     forced_response_path / name_format.format(var=v_name),
-                )
+            ).astype("float32").load()
             )
 
         forced_response = xr.merge(responses, compat="no_conflicts")
