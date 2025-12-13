@@ -179,8 +179,7 @@ def main(cfg: DictConfig) -> None:
         )
 
     optimizer.zero_grad()
-    checkpoint_interval = 1000
-    # // grad_accumulation_steps
+    checkpoint_interval = cfg.checkpoint_interval
 
     for e in range(epochs):
         pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}", initial=step)
