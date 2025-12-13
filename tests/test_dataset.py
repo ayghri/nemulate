@@ -130,13 +130,37 @@ def main(
         loading_time_chunck_size=24,
         transform=tfm,
     )
+    climate_dl = DataLoader(
+        climate_ds,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
+        shuffle=True,
+        persistent_workers=persistent_workers,
+        pin_memory=pin_memory,
+    )
 
     pbar = tqdm(climate_ds, desc="Browsing dataloader")
+    i = 0
     for batch in pbar:
         # (batch_size, interval, num_vars, lat, lon)
         fields = batch["vars"].to(device)
         masks = batch["land_mask"].to(device)
         print(f"Fields shape: {fields.shape}, Masks shape: {masks.shape}")
+        if i >= 5:
+            break
+
+    pbar = tqdm(climate_dl, desc="Browsing dataloader")
+    i = 0
+    for batch in pbar:
+        # (batch_size, interval, num_vars, lat, lon)
+        fields = batch["vars"].to(device)
+        masks = batch["land_mask"].to(device)
+        print(f"Fields shape: {fields.shape}, Masks shape: {masks.shape}")
+        if i >= 5:
+            break
+
+
 
     # for e in range(epochs):
     #     pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}")
