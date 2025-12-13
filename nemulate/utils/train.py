@@ -8,12 +8,19 @@ class WarmupScheduler(LRScheduler):
         self.warmup_steps = warmup_steps
         self.after_scheduler = after_scheduler
         self.finished_warmup = False
-        super().__init__(optimizer, last_epoch)
+        # Initialize like a normal LRScheduler. We keep last_epoch=-1 so that
+        # before any call to step(), we are at epoch -1 and can return lr=0.
+        super().__init__(optimizer)
 
     def get_lr(self):
         if self.last_epoch < self.warmup_steps:
-            # Linear warmup
-            alpha = self.last_epoch / self.warmup_steps
+            # Linear warmup. We want lr=0 at initialization (last_epoch=-1)
+            # and then a linear ramp from 0 to base_lr over `warmup_steps`
+            # calls to `step()`. PyTorch increments last_epoch inside
+            # LRScheduler.step(), so epoch 0 corresponds to the first
+            # scheduler.step() call.
+            effective_epoch = max(self.last_epoch, 0)
+            alpha = effective_epoch / float(self.warmup_steps)
             return [base_lr * alpha for base_lr in self.base_lrs]
 
         if self.after_scheduler:

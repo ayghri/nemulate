@@ -146,24 +146,25 @@ def main(cfg: DictConfig) -> None:
     # group.setdefault("initial_lr", initial_lr)
     from nemulate.utils.train import WarmupScheduler
 
-    scheduler = WarmupScheduler(
+    warmup_scheduler = WarmupScheduler(
         optimizer,
         warmup_steps=warmup_steps,
-        after_scheduler=torch.optim.lr_scheduler.LinearLR(
-            optimizer,
-            start_factor=1.0,
-            end_factor=final_lr / base_lr,
-            total_iters=total_steps - warmup_steps,
-        ),
     )
-    # scheduler = torch.optim.lr_scheduler.SequentialLR(
-    #     optimizer,
-    #     schedulers=[
-    #         warmup_scheduler,
-    #         decay_scheduler,
-    #     ],
-    #     milestones=[warmup_steps],
-    # )
+
+    decay_scheduler = torch.optim.lr_scheduler.LinearLR(
+        optimizer,
+        start_factor=1.0,
+        end_factor=final_lr / base_lr,
+        total_iters=total_steps - warmup_steps,
+    )
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer,
+        schedulers=[
+            warmup_scheduler,
+            decay_scheduler,
+        ],
+        milestones=[warmup_steps],
+    )
 
     if resume_ckpt:
         resume_path = Path(to_absolute_path(resume_ckpt))
@@ -219,9 +220,8 @@ def main(cfg: DictConfig) -> None:
             if (batch_idx + 1) % grad_accumulation_steps == 0:
                 clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-                
-                scheduler.step()
                 optimizer.step()
+                scheduler.step()
                 optimizer.zero_grad()
 
                 if step % checkpoint_interval == 0:
