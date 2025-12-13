@@ -85,10 +85,6 @@ def main(cfg: DictConfig) -> None:
 
     members = get_cesm2_members_ids(merged_path, var_name=var_names)
 
-    # Optimizer and LR scheduler: linearly decay from base_lr to final_lr
-    base_lr = cfg.base_lr
-    final_lr = cfg.final_lr
-
     climate_ds = ClimateDataset(
         merged_path,
         members=members,
@@ -113,12 +109,16 @@ def main(cfg: DictConfig) -> None:
     model = get_model(model_arch)(
         include_land_mask=True, land_mask_channels=len(var_names)
     ).to(device, dtype=bhalf)
+
+    criterion = nn.MSELoss()
     #   memory_format=torch.channels_last)
 
     with torch.autocast(device_type="cuda:0", dtype=bhalf):
         summary(model, input_data=torch.randn(16, 5, 180, 360).to(device))
 
-    criterion = nn.MSELoss()
+    # Optimizer and LR scheduler: linearly decay from base_lr to final_lr
+    base_lr = cfg.base_lr
+    final_lr = cfg.final_lr
 
     # Handle resume configuration (step for scheduler + logging)
     resume_ckpt = cfg.get("resume_checkpoint")
@@ -126,12 +126,15 @@ def main(cfg: DictConfig) -> None:
 
     grad_accumulation_steps = cfg.get("grad_accumulation_steps", 1)
     epochs = cfg.epochs
+
     total_steps = (epochs * len(climate_dl)) // grad_accumulation_steps
+    resume_step_grad = resume_step // grad_accumulation_steps
 
     initial_lr = final_lr + (base_lr - final_lr) * (
-        1 - resume_step / total_steps
+        1 - resume_step_grad / total_steps
     )
     start_factor = initial_lr / base_lr
+
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=base_lr, weight_decay=1e-3
     )
@@ -143,7 +146,7 @@ def main(cfg: DictConfig) -> None:
     # param_group["lr"] = initial_lr
     # for group in optimizer.param_groups:
     # group.setdefault("initial_lr", initial_lr)
-    from nemulate.utils.train import WarmupScheduler
+    # from nemulate.utils.train import WarmupScheduler
 
     # warmup_scheduler = WarmupScheduler(
     #     optimizer,
