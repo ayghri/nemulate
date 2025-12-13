@@ -202,12 +202,10 @@ def main(cfg: DictConfig) -> None:
                 mask = mask.transpose(1, 2).contiguous()
 
                 # (batch_size*interval, num_vars, lat, lon)
-                # fields = fields.view(-1, *fields.shape[2:]).to(
-                #     memory_format=torch.channels_last
-                # )
-                # mask = mask.view(-1, *mask.shape[2:]).to(
-                #     # memory_format=torch.channels_last
-                # )
+                fields = fields.view(-1, *fields.shape[2:])
+                # .to( memory_format=torch.channels_last)
+                mask = mask.view(-1, *mask.shape[2:])
+                # .to( memory_format=torch.channels_last)
 
                 reconstruction, _ = model(fields, land_mask=mask.float())
                 reconstruction = reconstruction.masked_fill(mask, 0.0)
