@@ -57,7 +57,6 @@ def main(cfg: DictConfig) -> None:
     device = torch.device(f"cuda:{cfg.device_id}")
 
     tfm = nn.Sequential(
-        Lambda(lambda ins: ins.compute()),
         SubstractForcedResponse(
             cesm_path.joinpath("moments"),
             "{var}_forced_response_1.nc",
@@ -97,6 +96,7 @@ def main(cfg: DictConfig) -> None:
         interval=24,
         loading_time_chunck_size=24,
         transform=tfm,
+        compute=True
     )
 
     climate_dl = DataLoader(
@@ -138,7 +138,8 @@ def main(cfg: DictConfig) -> None:
     )
 
     step = resume_step
-    warmup_steps = 200 // grad_accumulation_steps
+    
+    warmup_steps = cfg.warmup_steps // grad_accumulation_steps
 
     # for param_group in optimizer.param_groups:
     # param_group["lr"] = initial_lr
