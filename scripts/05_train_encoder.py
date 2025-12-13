@@ -131,13 +131,12 @@ def main(cfg: DictConfig) -> None:
     initial_lr = final_lr + (base_lr - final_lr) * (
         1 - resume_step / total_steps
     )
-
+    start_factor = initial_lr / base_lr
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=initial_lr, weight_decay=1e-3
+        model.parameters(), lr=base_lr, weight_decay=1e-3
     )
 
     step = resume_step
-
     warmup_steps = cfg.warmup_steps // grad_accumulation_steps
 
     # for param_group in optimizer.param_groups:
@@ -146,15 +145,22 @@ def main(cfg: DictConfig) -> None:
     # group.setdefault("initial_lr", initial_lr)
     from nemulate.utils.train import WarmupScheduler
 
-    warmup_scheduler = WarmupScheduler(
+    # warmup_scheduler = WarmupScheduler(
+    #     optimizer,
+    #     warmup_steps=warmup_steps,
+    # )
+
+    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer,
-        warmup_steps=warmup_steps,
+        start_factor=1e-20,
+        end_factor=start_factor,
+        total_iters=warmup_steps,
     )
 
     decay_scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer,
-        start_factor=1.0,
-        end_factor=final_lr / base_lr,
+        start_factor=start_factor,
+        end_factor=final_lr / initial_lr,
         total_iters=total_steps - warmup_steps,
     )
     scheduler = torch.optim.lr_scheduler.SequentialLR(
@@ -164,6 +170,7 @@ def main(cfg: DictConfig) -> None:
             decay_scheduler,
         ],
         milestones=[warmup_steps],
+        # last_epoch=resume_step,
     )
 
     if resume_ckpt:
