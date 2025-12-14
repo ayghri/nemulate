@@ -191,6 +191,8 @@ def main(cfg: DictConfig) -> None:
     optimizer.zero_grad()
     checkpoint_interval = cfg.checkpoint_interval
 
+    compiled_model = torch.compile(model)
+
     for e in range(epochs):
         pbar = tqdm(climate_dl, desc=f"EarchAE {e + 1}/{epochs}", initial=step)
         total_loss = 0.0
@@ -211,7 +213,7 @@ def main(cfg: DictConfig) -> None:
                 mask = mask.view(-1, *mask.shape[2:])
                 # .to( memory_format=torch.channels_last)
 
-                reconstruction, _ = model(fields, land_mask=mask.float())
+                reconstruction, _ = compiled_model(fields, land_mask=mask.float())
                 reconstruction = reconstruction.masked_fill(mask, 0.0)
 
                 loss = criterion(fields, reconstruction)
