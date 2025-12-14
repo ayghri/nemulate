@@ -89,7 +89,7 @@ def main(cfg: DictConfig) -> None:
         merged_path,
         members=members,
         variables=var_names,
-        interval=24,
+        interval=cfg.batch_interval,
         loading_time_chunck_size=24,
         transform=tfm,
         compute=True,
@@ -140,7 +140,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     step = resume_step
-    warmup_steps = cfg.warmup_steps // grad_accumulation_steps
+    warmup_steps = cfg.warmup_steps
 
     # for param_group in optimizer.param_groups:
     # param_group["lr"] = initial_lr

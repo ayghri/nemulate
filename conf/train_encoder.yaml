@@ -7,8 +7,9 @@ model_name: inverted_earth_wide
 model_arch: InvertedEarthAE
 
 batch_size: 4
+batch_interval: 6 # effective batch size = batch_size * batch_interval
 num_workers: 8
-prefetch_factor: 3
+prefetch_factor: 2
 pin_memory: true
 
 epochs: 4
