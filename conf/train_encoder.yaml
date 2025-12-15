@@ -25,3 +25,7 @@ checkpoint_interval: 500 # steps between saving model checkpoints
 resume_checkpoint: null # path to .ckpt file or null
 resume_step: 0 # starting global step when resuming
 
+
+rotation_p: 0.5
+rotation_lows_deg: [-20,-30]
+rotation_highs_deg: [20, 30]

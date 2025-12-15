@@ -68,7 +68,11 @@ def main(cfg: DictConfig) -> None:
             var_names=var_names,
         ),
         AddLatLong(grid_path=cesm_path / "grid_info.nc"),
-        RandomRotatedRegrid(grid_path=cesm_path / "grid_info.nc", p=1.0),
+        RandomRotatedRegrid(grid_path=cesm_path / "grid_info.nc",
+            p=cfg.rotation_p,
+            rotation_lows_deg=tuple(cfg.rotation_lows_deg),
+            rotation_highs_deg=tuple(cfg.rotation_highs_deg)
+            ),
         AddNanMask(var_names),
         AddXYZ(),
         AddYearMonth(),
